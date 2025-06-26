@@ -5,6 +5,5 @@ game
 *_glsl.odin
 
 # images
-assets/
-assets/**
+assets/*
 !assets/senjou-starry.png
