@@ -1,4 +1,5 @@
 @header package main
+@header import sg "shared:sokol/gfx"
 
 @vs vs
 in vec2 pos;
