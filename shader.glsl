@@ -2,19 +2,24 @@
 @header import sg "shared:sokol/gfx"
 
 @vs vs
-in vec2 pos;
+in vec4 position;
+in vec4 color0;
+
+out vec4 color;
 
 void main() {
-	gl_Position = vec4(pos, 0, 1);
+    gl_Position = position;
+    color = color0;
 }
 @end
 
 @fs fs
-out vec4 color;
+in vec4 color;
+out vec4 frag_color;
 
 void main() {
-	color = vec4(1, 0, 0, 1);
+    frag_color = color;
 }
 @end
 
-@program main vs fs
+@program triangle vs fs
