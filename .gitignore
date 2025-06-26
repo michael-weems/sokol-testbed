@@ -1,2 +1,10 @@
+# binary output
 game
-*_gen_shdr.odin
+
+# generated shader bindings for odin
+*_glsl.odin
+
+# images
+assets/
+assets/**
+!assets/senjou-starry.png
