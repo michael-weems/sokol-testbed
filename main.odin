@@ -13,7 +13,7 @@ import stbi "vendor:stb/image"
 
 default_context: runtime.Context
 
-ROTATION_SPEED :: 90
+ROTATION_SPEED :: 10
 
 Vec2 :: [2]f32
 Vec3 :: [3]f32
@@ -157,7 +157,6 @@ frame :: proc "c" () {
 
 	sg.begin_pass({action = g.pass_action, swapchain = sglue.swapchain()})
 
-
 	sg.apply_pipeline(g.pip)
 
 	binding := g.bind
@@ -274,16 +273,16 @@ update_bullets :: proc(dt: f32) {
 		append(
 			&bullets,
 			Bullet {
-				dir = g.camera.target,
+				dir = g.camera.target - g.camera.position,
 				pos = g.camera.target,
-				rot = Vec3{1, 1, 1},
+				rot = Vec3{0.0, 0.0, 0.0},
 				img = g.image,
 			},
 		)
 	}
 
 	for &bullet in bullets {
-		bullet.rot += g.rotation
+		bullet.rot += Vec3{0, 3, 3}
 		bullet.pos += bullet.dir * SHOOT_SPEED
 	}
 
