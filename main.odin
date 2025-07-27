@@ -124,7 +124,9 @@ frame :: proc "c" () {
 
 	dt := f32(sapp.frame_duration())
 
+	update_physics(dt)
 	update_camera(dt)
+	update_grapple(dt)
 	update_bullets(dt)
 
 	g.rotation += linalg.to_radians(ROTATION_SPEED * dt)
@@ -153,6 +155,40 @@ frame :: proc "c" () {
 		{{-2, 1, 1}, {0, 45, 0}, g.image2},
 		{{-3, 1, 1.5}, {0, 45, 0}, g.image2},
 		{{-4, 1, 2}, {0, 45, 0}, g.image2},
+		{{0, 0, 5}, {0, 0, 0}, g.image},
+		{{0, 1, 5}, {0, 0, 0}, g.image},
+		{{0, 2, 5}, {0, 0, 0}, g.image},
+		{{0, 3, 5}, {0, 0, 0}, g.image},
+		{{0, 4, 5}, {0, 0, 0}, g.image},
+		{{0, 5, 5}, {0, 0, 0}, g.image},
+		{{0, 6, 5}, {0, 0, 0}, g.image},
+		{{0, 7, 5}, {0, 0, 0}, g.image},
+		{{0, 0, -5}, {0, 0, 0}, g.image},
+		{{0, 1, -5}, {0, 0, 0}, g.image},
+		{{0, 2, -5}, {0, 0, 0}, g.image},
+		{{0, 3, -5}, {0, 0, 0}, g.image},
+		{{0, 4, -5}, {0, 0, 0}, g.image},
+		{{0, 5, -5}, {0, 0, 0}, g.image},
+		{{0, 6, -5}, {0, 0, 0}, g.image},
+		{{0, 7, -5}, {0, 0, 0}, g.image},
+		{{5, 0, 0}, {0, 90, 0}, g.image},
+		{{5, 1, 0}, {0, 90, 0}, g.image},
+		{{5, 0, 0}, {0, 90, 0}, g.image},
+		{{5, 1, 0}, {0, 90, 0}, g.image},
+		{{5, 2, 0}, {0, 90, 0}, g.image},
+		{{5, 3, 0}, {0, 90, 0}, g.image},
+		{{5, 4, 0}, {0, 90, 0}, g.image},
+		{{5, 5, 0}, {0, 90, 0}, g.image},
+		{{5, 6, 0}, {0, 90, 0}, g.image},
+		{{5, 7, 0}, {0, 90, 0}, g.image},
+		{{-5, 0, 0}, {0, 90, 0}, g.image},
+		{{-5, 1, 0}, {0, 90, 0}, g.image},
+		{{-5, 2, 0}, {0, 90, 0}, g.image},
+		{{-5, 3, 0}, {0, 90, 0}, g.image},
+		{{-5, 4, 0}, {0, 90, 0}, g.image},
+		{{-5, 5, 0}, {0, 90, 0}, g.image},
+		{{-5, 6, 0}, {0, 90, 0}, g.image},
+		{{-5, 7, 0}, {0, 90, 0}, g.image},
 	}
 
 	sg.begin_pass({action = g.pass_action, swapchain = sglue.swapchain()})
@@ -211,17 +247,58 @@ frame :: proc "c" () {
 
 	mouse_move = {}
 }
+
+GRAVITY: f32 = -0.03
+JUMP_VELOCITY: f32 = 0.3
+
+GROUND_LEVEL: f32 = 0.0
+
+in_air := false
+velocity: f32 = 0.0
+jump_start: f32 = 0.0
+jump_time: f32 = 0.0
+
+calculate_jump :: proc(dt: f32) {
+	jump_time += dt
+	t := jump_time - jump_start
+	velocity = velocity + GRAVITY * t // TODO: change dt to seconds
+	g.camera.position += Vec3{0, velocity, 0}
+	log.debugf("dt: %f, velocity: %f", t, velocity)
+}
+
+update_physics :: proc(dt: f32) {
+	if in_air && g.camera.position.y <= GROUND_LEVEL {
+		in_air = false
+		velocity = 0.0
+		g.camera.position.y = GROUND_LEVEL
+		return
+	}
+
+	if in_air {
+		calculate_jump(dt)
+	} else if key_down[.SPACE] {
+		in_air = true
+		velocity = JUMP_VELOCITY
+		jump_start = 0.0
+		jump_time = 0.0
+		calculate_jump(dt)
+	}
+
+}
+
 SHOOT_SPEED :: 0.1
 
 MOVE_SPEED :: 3
 LOOK_SENSITIVITY :: 0.3
 
 update_camera :: proc(dt: f32) {
-	move_input := Vec2{0, 0}
+	move_input := Vec3{0, 0, 0}
 	if key_down[.W] do move_input.y = 1
 	else if key_down[.S] do move_input.y = -1
 	if key_down[.A] do move_input.x = -1
 	else if key_down[.D] do move_input.x = 1
+	if key_down[.LEFT_CONTROL] do move_input.z = -1
+	else if key_down[.LEFT_SHIFT] do move_input.z = 1
 
 	look_input: Vec2 = -mouse_move * LOOK_SENSITIVITY
 	g.camera.look += look_input
@@ -235,8 +312,9 @@ update_camera :: proc(dt: f32) {
 	)
 	forward := (look_mat * Vec4{0, 0, -1, 1}).xyz
 	right := (look_mat * Vec4{1, 0, 0, 1}).xyz
+	up := (look_mat * Vec4{0, 1, 0, 1}).xyz
 
-	move_dir := forward * move_input.y + right * move_input.x
+	move_dir := forward * move_input.y + right * move_input.x + up * move_input.z
 
 	motion := linalg.normalize0(move_dir) * MOVE_SPEED * dt
 
@@ -286,6 +364,26 @@ update_bullets :: proc(dt: f32) {
 		bullet.pos += bullet.dir * SHOOT_SPEED
 	}
 
+}
+
+GRAPPLE_DISTANCE: f32 = 15.0
+GRAPPLE_SPEED: f32 = 0.2
+grappling := false
+grappling_dir: Vec3 = Vec3{0, 0, 0}
+grapple_start: Vec3 = Vec3{0, 0, 0}
+
+update_grapple :: proc(dt: f32) {
+	if grappling {
+		g.camera.position += grappling_dir * GRAPPLE_SPEED
+
+		distance := math.abs(linalg.distance(g.camera.position, grapple_start))
+		if distance >= GRAPPLE_DISTANCE do grappling = false
+	} else if key_down[.E] {
+		grappling = true
+		grapple_start = g.camera.position
+		grappling_dir = g.camera.target - g.camera.position
+		g.camera.position += grappling_dir * GRAPPLE_SPEED
+	}
 }
 
 mouse_down: bool = false
