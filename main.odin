@@ -2,14 +2,77 @@ package main
 
 import "base:intrinsics"
 import "base:runtime"
+import "core:fmt"
 import "core:log"
 import "core:math"
 import "core:math/linalg"
+import "core:os"
+import "core:strings"
 import sapp "shared:sokol/app"
+import sa "shared:sokol/audio"
 import sg "shared:sokol/gfx"
 import sglue "shared:sokol/glue"
 import slog "shared:sokol/log"
 import stbi "vendor:stb/image"
+
+
+// NOTE: ----------------------------------------------
+// NOTE: move to it's own module / package
+
+/*
+[Master RIFF chunk]
+   FileTypeBlocID  (4 bytes) : Identifier « RIFF »  (0x52, 0x49, 0x46, 0x46)
+   FileSize        (4 bytes) : Overall file size minus 8 bytes
+   FileFormatID    (4 bytes) : Format = « WAVE »  (0x57, 0x41, 0x56, 0x45)
+
+[Chunk describing the data format]
+   FormatBlocID    (4 bytes) : Identifier « fmt␣ »  (0x66, 0x6D, 0x74, 0x20)
+   BlocSize        (4 bytes) : Chunk size minus 8 bytes, which is 16 bytes here  (0x10)
+   AudioFormat     (2 bytes) : Audio format (1: PCM integer, 3: IEEE 754 float)
+   NbrChannels     (2 bytes) : Number of channels
+   Frequency       (4 bytes) : Sample rate (in hertz)
+   BytePerSec      (4 bytes) : Number of bytes to read per second (Frequency * BytePerBloc).
+   BytePerBloc     (2 bytes) : Number of bytes per block (NbrChannels * BitsPerSample / 8).
+   BitsPerSample   (2 bytes) : Number of bits per sample
+
+[Chunk containing the sampled data]
+   DataBlocID      (4 bytes) : Identifier « data »  (0x64, 0x61, 0x74, 0x61)
+   DataSize        (4 bytes) : SampledData size
+   SampledData
+*/
+
+// https://www.mmsp.ece.mcgill.ca/Documents/AudioFormats/WAVE/WAVE.html
+RiffHeader :: struct #packed {
+	file_type_bloc_id: [4]u8, // (4 bytes) : Identifier « RIFF »  (0x52, 0x49, 0x46, 0x46)
+	file_size:         i32, // (4 bytes) : Overall file size minus 8 bytes
+	file_format_id:    [4]u8, // (4 bytes) : Format = « WAVE »  (0x57, 0x41, 0x56, 0x45)
+}
+
+FormatHeader :: struct #packed {
+	format_bloc_id:  [4]u8, // (4 bytes) : Identifier « fmt␣ »  (0x66, 0x6D, 0x74, 0x20)
+	bloc_size:       i32, // (4 bytes) : Chunk size minus 8 bytes, which is 16 bytes here  (0x10)
+	audio_format:    i16, // (2 bytes) : Audio format (1: PCM integer, 3: IEEE 754 float)
+	nbr_channels:    i16, // (2 bytes) : Number of channels
+	frequency:       i32, // (4 bytes) : Sample rate (in hertz)
+	byte_per_sec:    i32, // (4 bytes) : Number of bytes to read per second (Frequency * BytePerBloc).
+	byte_per_bloc:   i16, // (2 bytes) : Number of bytes per block (NbrChannels * BitsPerSample / 8).
+	bits_per_sample: i16, // (2 bytes) : Number of bits per sample
+}
+
+WaveDataHeader :: struct #packed {
+	data_block_id: [4]u8, // (4 bytes) : Identifier « data »  (0x64, 0x61, 0x74, 0x61)
+	data_size:     i32, // (4 bytes) : SampledData size
+}
+
+WavContents :: struct #packed {
+	channels:  i16,
+	frequency: i32,
+	samples:   []i16, // TODO: change to f32?
+}
+AUDIO_FREQ := i32(44100)
+AUDIO_CHANNELS := i16(2)
+
+// NOTE: ----------------------------------------------
 
 default_context: runtime.Context
 
@@ -45,6 +108,83 @@ Globals :: struct {
 }
 g: ^Globals
 
+load_wav :: proc(filename: string, contents: ^WavContents) {
+
+	data, ok := os.read_entire_file(filename)
+	if !ok {
+		log.fatal("could not read: ", filename)
+		return
+	}
+
+	offset := 0
+
+	riff: RiffHeader
+	intrinsics.mem_copy(&riff, &data[offset], size_of(RiffHeader))
+	offset += size_of(RiffHeader)
+
+	log.assert(
+		strings.clone_from_bytes(riff.file_type_bloc_id[:]) == "RIFF", // RIFF header
+		"Invalid .wav file, bytes 0-3 should spell 'RIFF'",
+	)
+	log.assert(
+		strings.clone_from_bytes(riff.file_format_id[:]) == "WAVE",
+		"Invalid .wav file, bytes 8-11 should spell 'WAVE'",
+	)
+
+
+	for offset < len(data) {
+		// TODO: get this to read the file properly
+		header: WaveDataHeader
+		intrinsics.mem_copy(&header, &data[offset], size_of(WaveDataHeader))
+
+		if header.data_block_id == "fmt " {
+			// Format section
+			format: FormatHeader
+			intrinsics.mem_copy(&format, &data[offset], size_of(FormatHeader))
+			offset += size_of(FormatHeader)
+
+
+			/*log.assert(
+				format.frequency == AUDIO_FREQ,
+				fmt.aprintf("sample_rate, got %d - expected %d", format.sample_rate, AUDIO_FREQ),
+			)*/
+			/*log.assert(
+				format.channel_count == AUDIO_CHANNELS,
+				fmt.aprintf(
+					"channel_count, got %d - expected %d",
+					format.channel_count,
+					AUDIO_CHANNELS,
+				),
+			)*/
+			/*log.assert(
+				format.bits_per_sample == i16(32),
+				fmt.aprintf("bits per sample, got %d - expected %d", format.bits_per_sample, 32),
+			)*/
+
+			contents.frequency = format.frequency
+			contents.channels = format.nbr_channels
+		} else if header.data_block_id == "data" {
+			// Data section
+			offset += size_of(WaveDataHeader)
+			log.assert(header.data_size != 0, fmt.aprintf("data size: %d", header.data_size))
+
+
+			/*
+			contents.samples = make([]i16, data_header.data_size)
+			intrinsics.mem_copy(&contents.samples, &data[offset], data_header.section_size)
+
+			log.assert(len(contents.samples) == int(data_header.section_size))
+			*/
+		} else {
+			offset += int(size_of(header) + header.data_size)
+		}
+	}
+
+	log.assert(contents.frequency != 0, "contents.freqency is 0")
+	log.assert(contents.channels != 0, "contents.channels is 0")
+	log.assert(len(contents.samples) != 0, "contents.samples length is 0")
+}
+
 init :: proc "c" () {
 	context = default_context
 
@@ -56,6 +196,17 @@ init :: proc "c" () {
 	}
 
 	sg.setup({environment = sglue.environment(), logger = {func = slog.func}})
+	log.assert(sg.isvalid(), "sokol graphics setup is not valid")
+
+	contents: WavContents
+	bg_music := "assets/ocean-beats.wav"
+	load_wav(bg_music, &contents)
+	// TODO: apply sample_rate and such from the actually read wav file, not hard-coded?
+	sa.setup({sample_rate = 44100, num_channels = 2, logger = {func = slog.func}})
+	log.assert(sa.isvalid(), "sokol audio setup is not valid")
+
+	//sa.push(contents.samples, len(contents.samples))
+
 
 	sapp.show_mouse(false)
 	sapp.lock_mouse(true)
@@ -442,6 +593,7 @@ cleanup :: proc "c" () {
 	// todo destroy others?
 	free(g)
 	sg.shutdown()
+	sa.shutdown()
 }
 
 
