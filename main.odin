@@ -216,7 +216,14 @@ load_wav :: proc(filename: string, contents: ^WavContents) {
 					ieee_format.audio_format == WAVE_FORMAT_IEEE_FLOAT,
 					"ieee format audio format != 3",
 				)
-				log.assert(ieee_format.chunk_size == 18, "ieee format size != 18")
+
+				/*
+				log.assertf(
+					ieee_format.chunk_size == 18,
+					"ieee format size %d != 18",
+					ieee_format.chunk_size,
+				)
+				*/
 
 				contents.frequency = ieee_format.frequency
 				contents.channels = ieee_format.channels
@@ -289,8 +296,12 @@ load_wav :: proc(filename: string, contents: ^WavContents) {
 		case "junk":
 			offset += size_of(ChunkHeader)
 			offset += int(chunk.chunk_size)
+		case "JUNK":
+			offset += size_of(ChunkHeader)
+			offset += int(chunk.chunk_size)
 		case:
-			log.panic("chunk id not recognized")
+			offset += size_of(ChunkHeader)
+			offset += int(chunk.chunk_size)
 		}
 	}
 
@@ -317,7 +328,8 @@ init :: proc "c" () {
 	sg.setup({environment = sglue.environment(), logger = {func = slog.func}})
 	log.assert(sg.isvalid(), "sokol graphics setup is not valid")
 
-	bg_music := "assets/audio/phaser.wav"
+	//bg_music := "assets/audio/phaser.wav"
+	bg_music := "assets/audio/ocean-beats.wav"
 	load_wav(bg_music, &g.audio_phaser)
 	sa.setup(
 		{
