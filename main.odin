@@ -15,6 +15,9 @@ import sglue "shared:sokol/glue"
 import slog "shared:sokol/log"
 import stbi "vendor:stb/image"
 
+// ANSI escape codes for colors
+FAIL :: "\x1b[31mfail >>\x1b[0m"
+DONE :: "\x1b[32mdone >>\x1b[0m"
 
 // NOTE: ----------------------------------------------
 // NOTE: move to it's own module / package
@@ -110,12 +113,18 @@ WaveDataHeader :: struct #packed {
 }
 
 WavContents :: struct {
+	// config
 	channels:    i16,
 	frequency:   i32,
+	// data
 	samples_raw: []f32,
 	samples:     ^f32,
+	// metadata
+	file_path:   string,
 	sample_idx:  int,
 	is_playing:  bool,
+	loop:        bool,
+	is_music:    bool,
 }
 AUDIO_FREQ := i32(44100)
 AUDIO_CHANNELS := i16(2)
@@ -144,29 +153,76 @@ Camera :: struct {
 	look:     Vec2,
 }
 
+Audio :: enum {
+	//music_ocean_beats,
+	music_bounce,
+	effect_phaser,
+}
+
 Globals :: struct {
-	pip:            sg.Pipeline,
-	bind:           sg.Bindings,
-	pass_action:    sg.Pass_Action,
-	image:          sg.Image,
-	image2:         sg.Image,
-	sampler:        sg.Sampler,
-	rotation:       f32,
-	camera:         Camera,
-	audio_phaser:   WavContents,
-	audio_bg_music: WavContents,
+	pip:         sg.Pipeline,
+	bind:        sg.Bindings,
+	pass_action: sg.Pass_Action,
+	image:       sg.Image,
+	image2:      sg.Image,
+	sampler:     sg.Sampler,
+	rotation:    f32,
+	camera:      Camera,
+	audio:       map[Audio]^WavContents,
 }
 g: ^Globals
 
-load_wav :: proc(filename: string, contents: ^WavContents) {
+validate_audio :: proc() {
+	for audio, index in Audio {
+		_, ok := g.audio[audio]
+		log.assertf(ok, "%s audio: validate: registry missing audio: %s", FAIL, audio)
+	}
 
-	file_data, ok := os.read_entire_file(filename)
+	freq: i32
+	for key, value in g.audio {
+		if freq == 0 {
+			log.infof("frequency: %d", value.frequency)
+			freq = value.frequency
+		}
+
+		log.assertf(
+			freq == value.frequency,
+			"%s audio: validate: freq mismatch: %d != %d: %s",
+			FAIL,
+			freq,
+			value.frequency,
+			value.file_path,
+		)
+	}
+
+	channels: i16
+	for key, value in g.audio {
+		if channels == 0 {
+			log.infof("# channels: %d", value.channels)
+			channels = value.channels
+		}
+
+		log.assertf(
+			channels == value.channels,
+			"%s audio: validate: channel mismatch: %d != %d: %s",
+			FAIL,
+			channels,
+			value.channels,
+			value.file_path,
+		)
+	}
+
+	log.assertf(sa.isvalid(), "%s sokol audio setup is not valid", FAIL)
+}
+
+load_wav :: proc(contents: ^WavContents) {
+	file_data, ok := os.read_entire_file(contents.file_path)
 	if !ok {
-		log.fatal("could not read: ", filename)
+		log.fatal("could not read: ", contents.file_path)
 		return
 	}
 
-	log.debugf("wav file: %s", filename)
+	log.debugf("wav file: %s", contents.file_path)
 
 	offset := 0
 
@@ -320,12 +376,17 @@ load_wav :: proc(filename: string, contents: ^WavContents) {
 			offset += int(chunk.chunk_size)
 		}
 	}
-	log.debugf("- ", format.chunk_id)
 
 	log.assert(contents.frequency != 0, "contents.freqency is 0")
 	log.assert(contents.channels != 0, "contents.channels is 0")
 	log.assert(len(contents.samples_raw) != 0, "contents.samples_raw length is 0")
-	log.debug("contents scanned")
+}
+
+effect_phaser := WavContents {
+	file_path = "assets/audio/phaser.wav",
+}
+music_bounce := WavContents {
+	file_path = "assets/audio/bounce.wav",
 }
 
 init :: proc "c" () {
@@ -341,22 +402,29 @@ init :: proc "c" () {
 	sg.setup({environment = sglue.environment(), logger = {func = slog.func}})
 	log.assert(sg.isvalid(), "sokol graphics setup is not valid")
 
-	audio_phaser := "assets/audio/phaser.wav"
-	load_wav(audio_phaser, &g.audio_phaser)
-	g.audio_phaser.is_playing = false
-	g.audio_phaser.sample_idx = 0
+	g.audio[.effect_phaser] = &effect_phaser
+	load_wav(g.audio[.effect_phaser])
 
-	//bg_music := "assets/audio/ocean-beats.wav"
-	//bg_music := "assets/audio/scoop.wav"
-	bg_music := "assets/audio/bounce.wav"
-	load_wav(bg_music, &g.audio_bg_music)
-	g.audio_bg_music.is_playing = true
-	g.audio_bg_music.sample_idx = 0
+	/*
+	g.audio[.music_ocean_beats] = &WavContents{file_path = "assets/audio/ocean-beats.wav"}
+	load_wav(g.audio[.music_ocean_beats])
+	g.audio[.music_ocean_beats].loop = true
+	g.audio[.music_ocean_beats].is_playing = true
+	g.audio[.music_ocean_beats].is_music = true
+	*/
 
-	log.debugf("sample frequency: %d", g.audio_phaser.frequency)
+	g.audio[.music_bounce] = &music_bounce
+	load_wav(g.audio[.music_bounce])
+	g.audio[.music_bounce].loop = true
+	g.audio[.music_bounce].is_music = true
+	g.audio[.music_bounce].is_playing = true
+
+
 	sa.setup({logger = {func = slog.func}})
+	log.debugf("%s setup audio", DONE)
 
-	log.assert(sa.isvalid(), "sokol audio setup is not valid")
+	validate_audio()
+	log.debugf("%s validate audio", DONE)
 
 	sapp.show_mouse(false)
 	sapp.lock_mouse(true)
@@ -647,41 +715,42 @@ Bullet :: struct {
 bullets: [dynamic]Bullet
 
 update_audio :: proc(dt: f32) {
+	log.debug("pushing audio...")
 
 	num_frames := int(sa.expect())
 	if num_frames > 0 {
 
 		buf := make([]f32, num_frames)
-		for i in 0 ..< num_frames {
-			if g.audio_phaser.is_playing {
-				// NOTE: this should end after sound effect is over
-				if g.audio_phaser.sample_idx >= len(g.audio_phaser.samples_raw) {
-					g.audio_phaser.is_playing = false
-					g.audio_phaser.sample_idx = 0
-					break
-				}
+		for frame in 0 ..< num_frames {
+			track: for key, audio in g.audio {
+				log.assert(audio.channels == 2, "audio is zero-state")
+				if !audio.is_playing do continue
 
-				buf[i] += g.audio_phaser.samples_raw[g.audio_phaser.sample_idx]
-				g.audio_phaser.sample_idx += 1
-				buf[i] += g.audio_phaser.samples_raw[g.audio_phaser.sample_idx]
-				g.audio_phaser.sample_idx += 1
-			}
-		}
-		for i in 0 ..< num_frames {
-			if g.audio_bg_music.is_playing {
-				// NOTE: this should loop
-				if g.audio_bg_music.sample_idx >= len(g.audio_bg_music.samples_raw) {
-					g.audio_bg_music.sample_idx = 0
-				}
+				log.assertf(
+					audio.channels == 2,
+					"audio channels %d != 2: %s",
+					audio.channels,
+					audio.file_path,
+				)
 
-				buf[i] += g.audio_bg_music.samples_raw[g.audio_bg_music.sample_idx]
-				g.audio_bg_music.sample_idx += 1
-				buf[i] += g.audio_bg_music.samples_raw[g.audio_bg_music.sample_idx]
-				g.audio_bg_music.sample_idx += 1
+				for channel in 0 ..< audio.channels {
+					if audio.sample_idx >= len(audio.samples_raw) {
+						audio.sample_idx = 0
+						if !audio.loop {
+							audio.is_playing = false
+							continue track
+						}
+					}
+
+					buf[frame] += audio.samples_raw[audio.sample_idx]
+					audio.sample_idx += 1
+				}
 			}
 		}
 		sa.push(&buf[0], num_frames)
 	}
+
+	log.debugf("%s push audio", DONE)
 }
 
 update_bullets :: proc(dt: f32) {
@@ -725,8 +794,8 @@ update_grapple :: proc(dt: f32) {
 		g.camera.position += grappling_dir * GRAPPLE_SPEED
 
 		// TODO: make function for this
-		g.audio_phaser.is_playing = true
-		g.audio_phaser.sample_idx = 0
+		g.audio[.effect_phaser].is_playing = true
+		g.audio[.effect_phaser].sample_idx = 0
 	}
 }
 
