@@ -112,8 +112,10 @@ WaveDataHeader :: struct #packed {
 WavContents :: struct {
 	channels:    i16,
 	frequency:   i32,
-	samples_raw: []f32, // TODO: what is this type supposed to be?
-	samples:     ^f32, // TODO: what is this type supposed to be?
+	samples_raw: []f32,
+	samples:     ^f32,
+	sample_idx:  int,
+	is_playing:  bool,
 }
 AUDIO_FREQ := i32(44100)
 AUDIO_CHANNELS := i16(2)
@@ -143,15 +145,16 @@ Camera :: struct {
 }
 
 Globals :: struct {
-	pip:          sg.Pipeline,
-	bind:         sg.Bindings,
-	pass_action:  sg.Pass_Action,
-	image:        sg.Image,
-	image2:       sg.Image,
-	sampler:      sg.Sampler,
-	rotation:     f32,
-	camera:       Camera,
-	audio_phaser: WavContents,
+	pip:            sg.Pipeline,
+	bind:           sg.Bindings,
+	pass_action:    sg.Pass_Action,
+	image:          sg.Image,
+	image2:         sg.Image,
+	sampler:        sg.Sampler,
+	rotation:       f32,
+	camera:         Camera,
+	audio_phaser:   WavContents,
+	audio_bg_music: WavContents,
 }
 g: ^Globals
 
@@ -162,6 +165,8 @@ load_wav :: proc(filename: string, contents: ^WavContents) {
 		log.fatal("could not read: ", filename)
 		return
 	}
+
+	log.debugf("wav file: %s", filename)
 
 	offset := 0
 
@@ -182,8 +187,6 @@ load_wav :: proc(filename: string, contents: ^WavContents) {
 		strings.clone_from_bytes(riff.file_format_id[:]) == "WAVE",
 		"Invalid .wav file, bytes 8-11 should spell 'WAVE'",
 	)
-
-	log.infof("offset %d - len(file_data) %d", offset, len(file_data))
 	log.assert(
 		offset < len(file_data),
 		fmt.aprint("offset %d >= len(file_data) %d", offset, len(file_data)),
@@ -195,18 +198,26 @@ load_wav :: proc(filename: string, contents: ^WavContents) {
 		intrinsics.mem_copy(&chunk, &file_data[offset], size_of(ChunkHeader))
 
 		log.debugf(
-			"chunk: %c%c%c%c: size %d",
+			"%c%c%c%c header",
 			cast(rune)chunk.chunk_id[0],
 			cast(rune)chunk.chunk_id[1],
 			cast(rune)chunk.chunk_id[2],
 			cast(rune)chunk.chunk_id[3],
-			chunk.chunk_size,
 		)
+		log.debugf("- chunk size: %d", chunk.chunk_size)
 
 		switch chunk.chunk_id {
 		case "fmt ":
 			// Format section
 			intrinsics.mem_copy(&format, &file_data[offset], size_of(PcmFormatHeader))
+
+			log.debugf("- audio_format: %d", format.audio_format)
+			log.debugf("- channels: %d", format.channels)
+			log.debugf("- frequency: %d", format.frequency)
+			log.debugf("- byte per sec: %d", format.byte_per_sec)
+			log.debugf("- byte per bloc: %d", format.byte_per_bloc)
+			log.debugf("- bits per sample: %d", ieee_format.bits_per_sample)
+
 			switch format.audio_format {
 			case WAVE_FORMAT_IEEE_FLOAT:
 				log.debug("IEEE FLOAT format detected")
@@ -227,7 +238,15 @@ load_wav :: proc(filename: string, contents: ^WavContents) {
 
 				contents.frequency = ieee_format.frequency
 				contents.channels = ieee_format.channels
-				log.debugf("bits per sample: %d", ieee_format.bits_per_sample)
+
+				log.debugf("- ext size: %d", ieee_format.ext_size)
+
+			case WAVE_FORMAT_PCM:
+				log.debug("PCM format detected")
+				log.assert(format.audio_format == WAVE_FORMAT_PCM, "pcm format audio format != 1")
+
+				contents.frequency = format.frequency
+				contents.channels = format.channels
 			case:
 				log.panicf("uknown format: %d", format.audio_format)
 			}
@@ -275,14 +294,11 @@ load_wav :: proc(filename: string, contents: ^WavContents) {
 				len(file_data),
 			)
 
-			// TODO: figure out why audio sample not playing full sound
 			samples := data.chunk_size / i32((format.bits_per_sample / 8))
-			log.debugf("samples: %d", samples)
+			log.debugf("- total samples: %d", samples)
 
 			contents.samples_raw = make([]f32, samples)
-			log.debug("make samples array")
 			intrinsics.mem_copy(&contents.samples_raw[0], &file_data[offset], data.chunk_size)
-			log.debug("mem_copied the samples")
 			offset += int(chunk.chunk_size)
 			if offset % 2 == 1 {
 				offset += 1 // NOTE: account for pad-byte
@@ -304,15 +320,12 @@ load_wav :: proc(filename: string, contents: ^WavContents) {
 			offset += int(chunk.chunk_size)
 		}
 	}
+	log.debugf("- ", format.chunk_id)
 
 	log.assert(contents.frequency != 0, "contents.freqency is 0")
 	log.assert(contents.channels != 0, "contents.channels is 0")
 	log.assert(len(contents.samples_raw) != 0, "contents.samples_raw length is 0")
 	log.debug("contents scanned")
-}
-
-play_audio_phaser :: proc() {
-	sa.push(g.audio_phaser.samples, len(g.audio_phaser.samples_raw))
 }
 
 init :: proc "c" () {
@@ -328,18 +341,22 @@ init :: proc "c" () {
 	sg.setup({environment = sglue.environment(), logger = {func = slog.func}})
 	log.assert(sg.isvalid(), "sokol graphics setup is not valid")
 
-	//bg_music := "assets/audio/phaser.wav"
-	bg_music := "assets/audio/ocean-beats.wav"
-	load_wav(bg_music, &g.audio_phaser)
-	sa.setup(
-		{
-			sample_rate = g.audio_phaser.frequency,
-			num_channels = i32(g.audio_phaser.channels),
-			logger = {func = slog.func},
-		},
-	)
+	audio_phaser := "assets/audio/phaser.wav"
+	load_wav(audio_phaser, &g.audio_phaser)
+	g.audio_phaser.is_playing = false
+	g.audio_phaser.sample_idx = 0
+
+	//bg_music := "assets/audio/ocean-beats.wav"
+	//bg_music := "assets/audio/scoop.wav"
+	bg_music := "assets/audio/bounce.wav"
+	load_wav(bg_music, &g.audio_bg_music)
+	g.audio_bg_music.is_playing = true
+	g.audio_bg_music.sample_idx = 0
+
+	log.debugf("sample frequency: %d", g.audio_phaser.frequency)
+	sa.setup({logger = {func = slog.func}})
+
 	log.assert(sa.isvalid(), "sokol audio setup is not valid")
-	play_audio_phaser()
 
 	sapp.show_mouse(false)
 	sapp.lock_mouse(true)
@@ -412,6 +429,7 @@ frame :: proc "c" () {
 	update_camera(dt)
 	update_grapple(dt)
 	update_bullets(dt)
+	update_audio(dt)
 
 	g.rotation += linalg.to_radians(ROTATION_SPEED * dt)
 
@@ -628,6 +646,44 @@ Bullet :: struct {
 
 bullets: [dynamic]Bullet
 
+update_audio :: proc(dt: f32) {
+
+	num_frames := int(sa.expect())
+	if num_frames > 0 {
+
+		buf := make([]f32, num_frames)
+		for i in 0 ..< num_frames {
+			if g.audio_phaser.is_playing {
+				// NOTE: this should end after sound effect is over
+				if g.audio_phaser.sample_idx >= len(g.audio_phaser.samples_raw) {
+					g.audio_phaser.is_playing = false
+					g.audio_phaser.sample_idx = 0
+					break
+				}
+
+				buf[i] += g.audio_phaser.samples_raw[g.audio_phaser.sample_idx]
+				g.audio_phaser.sample_idx += 1
+				buf[i] += g.audio_phaser.samples_raw[g.audio_phaser.sample_idx]
+				g.audio_phaser.sample_idx += 1
+			}
+		}
+		for i in 0 ..< num_frames {
+			if g.audio_bg_music.is_playing {
+				// NOTE: this should loop
+				if g.audio_bg_music.sample_idx >= len(g.audio_bg_music.samples_raw) {
+					g.audio_bg_music.sample_idx = 0
+				}
+
+				buf[i] += g.audio_bg_music.samples_raw[g.audio_bg_music.sample_idx]
+				g.audio_bg_music.sample_idx += 1
+				buf[i] += g.audio_bg_music.samples_raw[g.audio_bg_music.sample_idx]
+				g.audio_bg_music.sample_idx += 1
+			}
+		}
+		sa.push(&buf[0], num_frames)
+	}
+}
+
 update_bullets :: proc(dt: f32) {
 
 	if mouse_down {
@@ -664,10 +720,13 @@ update_grapple :: proc(dt: f32) {
 		if distance >= GRAPPLE_DISTANCE do grappling = false
 	} else if key_down[.E] {
 		grappling = true
-		play_audio_phaser()
 		grapple_start = g.camera.position
 		grappling_dir = g.camera.target - g.camera.position
 		g.camera.position += grappling_dir * GRAPPLE_SPEED
+
+		// TODO: make function for this
+		g.audio_phaser.is_playing = true
+		g.audio_phaser.sample_idx = 0
 	}
 }
 
