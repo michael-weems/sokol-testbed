@@ -419,7 +419,6 @@ init :: proc "c" () {
 	g.audio[.music_bounce].is_music = true
 	g.audio[.music_bounce].is_playing = true
 
-
 	sa.setup({logger = {func = slog.func}})
 	log.debugf("%s setup audio", DONE)
 
@@ -715,7 +714,6 @@ Bullet :: struct {
 bullets: [dynamic]Bullet
 
 update_audio :: proc(dt: f32) {
-	log.debug("pushing audio...")
 
 	num_frames := int(sa.expect())
 	if num_frames > 0 {
@@ -723,15 +721,9 @@ update_audio :: proc(dt: f32) {
 		buf := make([]f32, num_frames)
 		for frame in 0 ..< num_frames {
 			track: for key, audio in g.audio {
-				log.assert(audio.channels == 2, "audio is zero-state")
-				if !audio.is_playing do continue
+				log.assert(audio.channels == 2, "g.audio pointers are invalid")
 
-				log.assertf(
-					audio.channels == 2,
-					"audio channels %d != 2: %s",
-					audio.channels,
-					audio.file_path,
-				)
+				if !audio.is_playing do continue
 
 				for channel in 0 ..< audio.channels {
 					if audio.sample_idx >= len(audio.samples_raw) {
@@ -749,8 +741,6 @@ update_audio :: proc(dt: f32) {
 		}
 		sa.push(&buf[0], num_frames)
 	}
-
-	log.debugf("%s push audio", DONE)
 }
 
 update_bullets :: proc(dt: f32) {
