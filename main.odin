@@ -147,12 +147,6 @@ Vertex :: struct {
 	uv:    Vec2,
 }
 
-Camera :: struct {
-	position: Vec3,
-	target:   Vec3,
-	look:     Vec2,
-}
-
 Audio :: enum {
 	//music_ocean_beats,
 	music_bounce,
@@ -167,7 +161,7 @@ Globals :: struct {
 	image2:      sg.Image,
 	sampler:     sg.Sampler,
 	rotation:    f32,
-	camera:      Camera,
+	camera:      Object,
 	audio:       map[Audio]^WavContents,
 }
 g: ^Globals
@@ -395,8 +389,8 @@ init :: proc "c" () {
 	g = new(Globals)
 
 	g.camera = {
-		position = {0, 0, 2},
-		target   = {0, 0, 1},
+		pos    = {0, 0, 2},
+		target = {0, 0, 1},
 	}
 
 	sg.setup({environment = sglue.environment(), logger = {func = slog.func}})
@@ -498,98 +492,98 @@ frame :: proc "c" () {
 	update_bullets(dt)
 	update_audio(dt)
 
-	g.rotation += linalg.to_radians(ROTATION_SPEED * dt)
+	//g.rotation += linalg.to_radians(ROTATION_SPEED * dt)
 
 	p := linalg.matrix4_perspective_f32(70, sapp.widthf() / sapp.heightf(), 0.0001, 1000)
 
 	// translate to put the object in the right place
 	// spin it with yaw_pitch_roll rotation
 	// rotate it to make the image right-side up
-	v := linalg.matrix4_look_at_f32(g.camera.position, g.camera.target, {0, 1, 0})
+	v := linalg.matrix4_look_at_f32(g.camera.pos, g.camera.target, {0, 1, 0})
 
 	objects := []Object {
 		// floor
-		{{0, -0.5, 0}, {90, 0, 0}, g.image},
-		{{0, -0.5, 1}, {90, 0, 0}, g.image},
-		{{0, -0.5, 2}, {90, 0, 0}, g.image},
-		{{0, -0.5, 3}, {90, 0, 0}, g.image},
-		{{0, -0.5, 4}, {90, 0, 0}, g.image},
-		{{0, -0.5, 5}, {90, 0, 0}, g.image},
-		{{1, -0.5, 0}, {90, 0, 0}, g.image},
-		{{1, -0.5, 1}, {90, 0, 0}, g.image},
-		{{1, -0.5, 2}, {90, 0, 0}, g.image},
-		{{1, -0.5, 3}, {90, 0, 0}, g.image},
-		{{1, -0.5, 4}, {90, 0, 0}, g.image},
-		{{1, -0.5, 5}, {90, 0, 0}, g.image},
-		{{2, -0.5, 0}, {90, 0, 0}, g.image},
-		{{2, -0.5, 1}, {90, 0, 0}, g.image},
-		{{2, -0.5, 2}, {90, 0, 0}, g.image},
-		{{2, -0.5, 3}, {90, 0, 0}, g.image},
-		{{2, -0.5, 4}, {90, 0, 0}, g.image},
-		{{2, -0.5, 5}, {90, 0, 0}, g.image},
-		{{3, -0.5, 0}, {90, 0, 0}, g.image},
-		{{3, -0.5, 1}, {90, 0, 0}, g.image},
-		{{3, -0.5, 2}, {90, 0, 0}, g.image},
-		{{3, -0.5, 3}, {90, 0, 0}, g.image},
-		{{3, -0.5, 4}, {90, 0, 0}, g.image},
-		{{3, -0.5, 5}, {90, 0, 0}, g.image},
-		{{4, -0.5, 0}, {90, 0, 0}, g.image},
-		{{4, -0.5, 1}, {90, 0, 0}, g.image},
-		{{4, -0.5, 2}, {90, 0, 0}, g.image},
-		{{4, -0.5, 3}, {90, 0, 0}, g.image},
-		{{4, -0.5, 4}, {90, 0, 0}, g.image},
-		{{4, -0.5, 5}, {90, 0, 0}, g.image},
+		{pos = {0, -0.5, 0}, rot = {90, 0, 0}, img = g.image},
+		{pos = {0, -0.5, 1}, rot = {90, 0, 0}, img = g.image},
+		{pos = {0, -0.5, 2}, rot = {90, 0, 0}, img = g.image},
+		{pos = {0, -0.5, 3}, rot = {90, 0, 0}, img = g.image},
+		{pos = {0, -0.5, 4}, rot = {90, 0, 0}, img = g.image},
+		{pos = {0, -0.5, 5}, rot = {90, 0, 0}, img = g.image},
+		{pos = {1, -0.5, 0}, rot = {90, 0, 0}, img = g.image},
+		{pos = {1, -0.5, 1}, rot = {90, 0, 0}, img = g.image},
+		{pos = {1, -0.5, 2}, rot = {90, 0, 0}, img = g.image},
+		{pos = {1, -0.5, 3}, rot = {90, 0, 0}, img = g.image},
+		{pos = {1, -0.5, 4}, rot = {90, 0, 0}, img = g.image},
+		{pos = {1, -0.5, 5}, rot = {90, 0, 0}, img = g.image},
+		{pos = {2, -0.5, 0}, rot = {90, 0, 0}, img = g.image},
+		{pos = {2, -0.5, 1}, rot = {90, 0, 0}, img = g.image},
+		{pos = {2, -0.5, 2}, rot = {90, 0, 0}, img = g.image},
+		{pos = {2, -0.5, 3}, rot = {90, 0, 0}, img = g.image},
+		{pos = {2, -0.5, 4}, rot = {90, 0, 0}, img = g.image},
+		{pos = {2, -0.5, 5}, rot = {90, 0, 0}, img = g.image},
+		{pos = {3, -0.5, 0}, rot = {90, 0, 0}, img = g.image},
+		{pos = {3, -0.5, 1}, rot = {90, 0, 0}, img = g.image},
+		{pos = {3, -0.5, 2}, rot = {90, 0, 0}, img = g.image},
+		{pos = {3, -0.5, 3}, rot = {90, 0, 0}, img = g.image},
+		{pos = {3, -0.5, 4}, rot = {90, 0, 0}, img = g.image},
+		{pos = {3, -0.5, 5}, rot = {90, 0, 0}, img = g.image},
+		{pos = {4, -0.5, 0}, rot = {90, 0, 0}, img = g.image},
+		{pos = {4, -0.5, 1}, rot = {90, 0, 0}, img = g.image},
+		{pos = {4, -0.5, 2}, rot = {90, 0, 0}, img = g.image},
+		{pos = {4, -0.5, 3}, rot = {90, 0, 0}, img = g.image},
+		{pos = {4, -0.5, 4}, rot = {90, 0, 0}, img = g.image},
+		{pos = {4, -0.5, 5}, rot = {90, 0, 0}, img = g.image},
 		// walls
-		{{0, 0, 0}, {0, 0, 0}, g.image},
-		{{1, 0, 0}, {0, 0, 0}, g.image},
-		{{2, 0, 0}, {0, 0, 0}, g.image},
-		{{3, 0, 0}, {0, 0, 0}, g.image},
-		{{0, 1, 0}, {0, 0, 0}, g.image},
-		{{1, 1, 0}, {0, 0, 0}, g.image},
-		{{2, 1, 0}, {0, 0, 0}, g.image},
-		{{3, 1, 0}, {0, 0, 0}, g.image},
-		{{-1, 0, 0.5}, {0, 45, 0}, g.image2},
-		{{-2, 0, 1}, {0, 45, 0}, g.image2},
-		{{-3, 0, 1.5}, {0, 45, 0}, g.image2},
-		{{-4, 0, 2}, {0, 45, 0}, g.image2},
-		{{-1, 1, 0.5}, {0, 45, 0}, g.image2},
-		{{-2, 1, 1}, {0, 45, 0}, g.image2},
-		{{-3, 1, 1.5}, {0, 45, 0}, g.image2},
-		{{-4, 1, 2}, {0, 45, 0}, g.image2},
-		{{0, 0, 5}, {0, 0, 0}, g.image},
-		{{0, 1, 5}, {0, 0, 0}, g.image},
-		{{0, 2, 5}, {0, 0, 0}, g.image},
-		{{0, 3, 5}, {0, 0, 0}, g.image},
-		{{0, 4, 5}, {0, 0, 0}, g.image},
-		{{0, 5, 5}, {0, 0, 0}, g.image},
-		{{0, 6, 5}, {0, 0, 0}, g.image},
-		{{0, 7, 5}, {0, 0, 0}, g.image},
-		{{0, 0, -5}, {0, 0, 0}, g.image},
-		{{0, 1, -5}, {0, 0, 0}, g.image},
-		{{0, 2, -5}, {0, 0, 0}, g.image},
-		{{0, 3, -5}, {0, 0, 0}, g.image},
-		{{0, 4, -5}, {0, 0, 0}, g.image},
-		{{0, 5, -5}, {0, 0, 0}, g.image},
-		{{0, 6, -5}, {0, 0, 0}, g.image},
-		{{0, 7, -5}, {0, 0, 0}, g.image},
-		{{5, 0, 0}, {0, 90, 0}, g.image},
-		{{5, 1, 0}, {0, 90, 0}, g.image},
-		{{5, 0, 0}, {0, 90, 0}, g.image},
-		{{5, 1, 0}, {0, 90, 0}, g.image},
-		{{5, 2, 0}, {0, 90, 0}, g.image},
-		{{5, 3, 0}, {0, 90, 0}, g.image},
-		{{5, 4, 0}, {0, 90, 0}, g.image},
-		{{5, 5, 0}, {0, 90, 0}, g.image},
-		{{5, 6, 0}, {0, 90, 0}, g.image},
-		{{5, 7, 0}, {0, 90, 0}, g.image},
-		{{-5, 0, 0}, {0, 90, 0}, g.image},
-		{{-5, 1, 0}, {0, 90, 0}, g.image},
-		{{-5, 2, 0}, {0, 90, 0}, g.image},
-		{{-5, 3, 0}, {0, 90, 0}, g.image},
-		{{-5, 4, 0}, {0, 90, 0}, g.image},
-		{{-5, 5, 0}, {0, 90, 0}, g.image},
-		{{-5, 6, 0}, {0, 90, 0}, g.image},
-		{{-5, 7, 0}, {0, 90, 0}, g.image},
+		{pos = {0, 0, 0}, img = g.image},
+		{pos = {1, 0, 0}, img = g.image},
+		{pos = {2, 0, 0}, img = g.image},
+		{pos = {3, 0, 0}, img = g.image},
+		{pos = {0, 1, 0}, img = g.image},
+		{pos = {1, 1, 0}, img = g.image},
+		{pos = {2, 1, 0}, img = g.image},
+		{pos = {3, 1, 0}, img = g.image},
+		{pos = {-1, 0, 0.5}, rot = {0, 45, 0}, img = g.image2},
+		{pos = {-2, 0, 1}, rot = {0, 45, 0}, img = g.image2},
+		{pos = {-3, 0, 1.5}, rot = {0, 45, 0}, img = g.image2},
+		{pos = {-4, 0, 2}, rot = {0, 45, 0}, img = g.image2},
+		{pos = {-1, 1, 0.5}, rot = {0, 45, 0}, img = g.image2},
+		{pos = {-2, 1, 1}, rot = {0, 45, 0}, img = g.image2},
+		{pos = {-3, 1, 1.5}, rot = {0, 45, 0}, img = g.image2},
+		{pos = {-4, 1, 2}, rot = {0, 45, 0}, img = g.image2},
+		{pos = {0, 0, 5}, img = g.image},
+		{pos = {0, 1, 5}, img = g.image},
+		{pos = {0, 2, 5}, img = g.image},
+		{pos = {0, 3, 5}, img = g.image},
+		{pos = {0, 4, 5}, img = g.image},
+		{pos = {0, 5, 5}, img = g.image},
+		{pos = {0, 6, 5}, img = g.image},
+		{pos = {0, 7, 5}, img = g.image},
+		{pos = {0, 0, -5}, img = g.image},
+		{pos = {0, 1, -5}, img = g.image},
+		{pos = {0, 2, -5}, img = g.image},
+		{pos = {0, 3, -5}, img = g.image},
+		{pos = {0, 4, -5}, img = g.image},
+		{pos = {0, 5, -5}, img = g.image},
+		{pos = {0, 6, -5}, img = g.image},
+		{pos = {0, 7, -5}, img = g.image},
+		{pos = {5, 0, 0}, rot = {0, 90, 0}, img = g.image},
+		{pos = {5, 1, 0}, rot = {0, 90, 0}, img = g.image},
+		{pos = {5, 0, 0}, rot = {0, 90, 0}, img = g.image},
+		{pos = {5, 1, 0}, rot = {0, 90, 0}, img = g.image},
+		{pos = {5, 2, 0}, rot = {0, 90, 0}, img = g.image},
+		{pos = {5, 3, 0}, rot = {0, 90, 0}, img = g.image},
+		{pos = {5, 4, 0}, rot = {0, 90, 0}, img = g.image},
+		{pos = {5, 5, 0}, rot = {0, 90, 0}, img = g.image},
+		{pos = {5, 6, 0}, rot = {0, 90, 0}, img = g.image},
+		{pos = {5, 7, 0}, rot = {0, 90, 0}, img = g.image},
+		{pos = {-5, 0, 0}, rot = {0, 90, 0}, img = g.image},
+		{pos = {-5, 1, 0}, rot = {0, 90, 0}, img = g.image},
+		{pos = {-5, 2, 0}, rot = {0, 90, 0}, img = g.image},
+		{pos = {-5, 3, 0}, rot = {0, 90, 0}, img = g.image},
+		{pos = {-5, 4, 0}, rot = {0, 90, 0}, img = g.image},
+		{pos = {-5, 5, 0}, rot = {0, 90, 0}, img = g.image},
+		{pos = {-5, 6, 0}, rot = {0, 90, 0}, img = g.image},
+		{pos = {-5, 7, 0}, rot = {0, 90, 0}, img = g.image},
 	}
 
 	sg.begin_pass({action = g.pass_action, swapchain = sglue.swapchain()})
@@ -663,15 +657,15 @@ calculate_jump :: proc(dt: f32) {
 	jump_time += dt
 	t := jump_time - jump_start
 	velocity = velocity + GRAVITY * t // TODO: change dt to seconds
-	g.camera.position += Vec3{0, velocity, 0}
+	g.camera.pos += Vec3{0, velocity, 0}
 	log.debugf("dt: %f, velocity: %f", t, velocity)
 }
 
 update_physics :: proc(dt: f32) {
-	if in_air && g.camera.position.y <= GROUND_LEVEL {
+	if in_air && g.camera.pos.y <= GROUND_LEVEL {
 		in_air = false
 		velocity = 0.0
-		g.camera.position.y = GROUND_LEVEL
+		g.camera.pos.y = GROUND_LEVEL
 		return
 	}
 
@@ -722,18 +716,20 @@ update_camera :: proc(dt: f32) {
 	if key_down[.C] {
 		// TODO: not working
 		g.camera.look = {722, 300}
-		g.camera.position = {0, 0, 2}
+		g.camera.pos = {0, 0, 2}
 		g.camera.target = {0, 0, 2}
 	} else {
-		g.camera.position += motion
-		g.camera.target = g.camera.position + forward
+		g.camera.pos += motion
+		g.camera.target = g.camera.pos + forward
 	}
 }
 
 Object :: struct {
-	pos: Vec3,
-	rot: Vec3,
-	img: sg.Image,
+	pos:    Vec3,
+	rot:    Vec3,
+	target: Vec3,
+	look:   Vec2,
+	img:    sg.Image,
 }
 
 Bullet :: struct {
@@ -782,7 +778,7 @@ update_bullets :: proc(dt: f32) {
 		append(
 			&bullets,
 			Bullet {
-				dir = g.camera.target - g.camera.position,
+				dir = g.camera.target - g.camera.pos,
 				pos = g.camera.target,
 				rot = Vec3{0.0, 0.0, 0.0},
 				img = g.image,
@@ -805,15 +801,15 @@ grapple_start: Vec3 = Vec3{0, 0, 0}
 
 update_grapple :: proc(dt: f32) {
 	if grappling {
-		g.camera.position += grappling_dir * GRAPPLE_SPEED
+		g.camera.pos += grappling_dir * GRAPPLE_SPEED
 
-		distance := math.abs(linalg.distance(g.camera.position, grapple_start))
+		distance := math.abs(linalg.distance(g.camera.pos, grapple_start))
 		if distance >= GRAPPLE_DISTANCE do grappling = false
 	} else if key_down[.E] {
 		grappling = true
-		grapple_start = g.camera.position
-		grappling_dir = g.camera.target - g.camera.position
-		g.camera.position += grappling_dir * GRAPPLE_SPEED
+		grapple_start = g.camera.pos
+		grappling_dir = g.camera.target - g.camera.pos
+		g.camera.pos += grappling_dir * GRAPPLE_SPEED
 
 		// TODO: make function for this
 		g.audio[.effect_phaser].is_playing = true
