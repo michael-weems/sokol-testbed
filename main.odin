@@ -89,7 +89,6 @@ IeeeFormatHeader :: struct #packed {
 	ext_size:        i16, // 0
 }
 
-
 ChunkHeader :: struct #packed {
 	chunk_id:   [4]u8, // (4 bytes) : Identifier « data »  (0x64, 0x61, 0x74, 0x61)
 	chunk_size: i32, // (4 bytes) : SampledData size
@@ -151,6 +150,14 @@ Audio :: enum {
 	//music_ocean_beats,
 	music_bounce,
 	effect_phaser,
+}
+
+Bindable :: struct {
+	vertices:    []Vertex,
+	bind:        sg.Bindings,
+	sampler:     sg.Sampler,
+	pipeline:    sg.Pipeline,
+	pass_action: sg.Pass_Action,
 }
 
 Globals :: struct {
@@ -383,6 +390,133 @@ music_bounce := WavContents {
 	file_path = "assets/audio/bounce.wav",
 }
 
+bind_panel: Bindable
+bind_bullet: Bindable
+bind_box: Bindable
+
+init_box :: proc(b: ^Bindable) {
+	WHITE :: sg.Color{1, 1, 1, 1}
+	RED :: sg.Color{1, 0, 0, 1}
+	BLUE :: sg.Color{0, 0, 1, 1}
+	PURP :: sg.Color{1, 0, 1, 1}
+
+	// a vertex buffer with 3 vertices
+
+	b.vertices = []Vertex {
+		{pos = {-0.5, -0.5, 0.0}, color = WHITE, uv = {0, 0}},
+		{pos = {0.5, -0.5, 0.0}, color = RED, uv = {1, 0}},
+		{pos = {-0.5, 0.5, 0.0}, color = BLUE, uv = {0, 1}},
+		{pos = {0.5, 0.5, 0.0}, color = PURP, uv = {1, 1}},
+	}
+
+	b.bind.vertex_buffers[0] = sg.make_buffer({data = sg_range(b.vertices)})
+	
+	// odinfmt: disable
+	indices := []u16 {
+		0, 1, 2,
+		2, 1, 3,
+	}
+	// odinfmt: enable
+	b.bind.index_buffer = sg.make_buffer({usage = {index_buffer = true}, data = sg_range(indices)})
+
+	b.bind.images = {
+		IMG_tex = g.image, // TODO: make this a texture option somehow?
+	}
+
+	b.sampler = sg.make_sampler({})
+	b.bind.samplers = {
+		SMP_smp = g.sampler,
+	}
+
+	// create a shader and pipeline object (default render states are fine for triangle)
+	b.pipeline = sg.make_pipeline(
+	{
+		shader = sg.make_shader(triangle_shader_desc(sg.query_backend())),
+		index_type = .UINT16,
+		depth = {
+			write_enabled = true, // always write to depth buffer
+			compare       = .LESS_EQUAL, // don't render objects behind objects in view
+		},
+		layout = {
+			attrs = {
+				ATTR_triangle_position = {format = .FLOAT3},
+				ATTR_triangle_color0 = {format = .FLOAT4},
+				ATTR_triangle_uv = {format = .FLOAT2},
+			},
+		},
+	},
+	)
+
+	// a pass action to clear framebuffer to black
+	b.pass_action = {
+		colors = {0 = {load_action = .CLEAR, clear_value = {r = 0.4, g = 0.2, b = 0.7, a = 1}}},
+	}
+
+}
+
+init_bullet :: proc(b: ^Bindable) {
+	init_panel(b)
+}
+
+init_panel :: proc(b: ^Bindable) {
+	WHITE :: sg.Color{1, 1, 1, 1}
+	RED :: sg.Color{1, 0, 0, 1}
+	BLUE :: sg.Color{0, 0, 1, 1}
+	PURP :: sg.Color{1, 0, 1, 1}
+
+	// a vertex buffer with 3 vertices
+
+	b.vertices = []Vertex {
+		{pos = {-0.5, -0.5, 0.0}, color = WHITE, uv = {0, 0}},
+		{pos = {0.5, -0.5, 0.0}, color = RED, uv = {1, 0}},
+		{pos = {-0.5, 0.5, 0.0}, color = BLUE, uv = {0, 1}},
+		{pos = {0.5, 0.5, 0.0}, color = PURP, uv = {1, 1}},
+	}
+
+	b.bind.vertex_buffers[0] = sg.make_buffer({data = sg_range(b.vertices)})
+	
+	// odinfmt: disable
+	indices := []u16 {
+		0, 1, 2,
+		2, 1, 3,
+	}
+	// odinfmt: enable
+	b.bind.index_buffer = sg.make_buffer({usage = {index_buffer = true}, data = sg_range(indices)})
+
+	b.bind.images = {
+		IMG_tex = g.image, // TODO: make this a texture option somehow?
+	}
+
+	b.sampler = sg.make_sampler({})
+	b.bind.samplers = {
+		SMP_smp = g.sampler,
+	}
+
+	// create a shader and pipeline object (default render states are fine for triangle)
+	b.pipeline = sg.make_pipeline(
+	{
+		shader = sg.make_shader(triangle_shader_desc(sg.query_backend())),
+		index_type = .UINT16,
+		depth = {
+			write_enabled = true, // always write to depth buffer
+			compare       = .LESS_EQUAL, // don't render objects behind objects in view
+		},
+		layout = {
+			attrs = {
+				ATTR_triangle_position = {format = .FLOAT3},
+				ATTR_triangle_color0 = {format = .FLOAT4},
+				ATTR_triangle_uv = {format = .FLOAT2},
+			},
+		},
+	},
+	)
+
+	// a pass action to clear framebuffer to black
+	b.pass_action = {
+		colors = {0 = {load_action = .CLEAR, clear_value = {r = 0.4, g = 0.2, b = 0.7, a = 1}}},
+	}
+}
+
 init :: proc "c" () {
 	context = default_context
 
@@ -392,6 +526,7 @@ init :: proc "c" () {
 		pos    = {0, 0, 2},
 		target = {0, 0, 1},
 	}
+
 
 	sg.setup({environment = sglue.environment(), logger = {func = slog.func}})
 	log.assert(sg.isvalid(), "sokol graphics setup is not valid")
@@ -422,62 +557,102 @@ init :: proc "c" () {
 	sapp.show_mouse(false)
 	sapp.lock_mouse(true)
 
-	WHITE :: sg.Color{1, 1, 1, 1}
-	RED :: sg.Color{1, 0, 0, 1}
-	BLUE :: sg.Color{0, 0, 1, 1}
-	PURP :: sg.Color{1, 0, 1, 1}
-
-	// a vertex buffer with 3 vertices
-	vertices := []Vertex {
-		{pos = {-0.5, -0.5, 0.0}, color = WHITE, uv = {0, 0}},
-		{pos = {0.5, -0.5, 0.0}, color = RED, uv = {1, 0}},
-		{pos = {-0.5, 0.5, 0.0}, color = BLUE, uv = {0, 1}},
-		{pos = {0.5, 0.5, 0.0}, color = PURP, uv = {1, 1}},
-	}
-	g.bind.vertex_buffers[0] = sg.make_buffer({data = sg_range(vertices)})
-	
-	// odinfmt: disable
-	indices := []u16 {
-		0, 1, 2,
-		2, 1, 3,
-	}
-	// odinfmt: enable
-	g.bind.index_buffer = sg.make_buffer({usage = {index_buffer = true}, data = sg_range(indices)})
+	init_panel(&bind_panel)
+	init_bullet(&bind_bullet)
+	init_box(&bind_box)
 
 	g.image = load_image("assets/senjou-starry.png")
 	g.image2 = load_image("assets/Mossy-TileSet.png")
 
-	g.bind.images = {
-		IMG_tex = g.image,
+
+	objs := []Object {
+		// floor
+		{kind = .Panel, pos = {0, -0.5, 0}, rot = {90, 0, 0}, img = g.image},
+		{kind = .Panel, pos = {0, -0.5, 1}, rot = {90, 0, 0}, img = g.image},
+		{kind = .Panel, pos = {0, -0.5, 2}, rot = {90, 0, 0}, img = g.image},
+		{kind = .Panel, pos = {0, -0.5, 3}, rot = {90, 0, 0}, img = g.image},
+		{kind = .Panel, pos = {0, -0.5, 4}, rot = {90, 0, 0}, img = g.image},
+		{kind = .Panel, pos = {0, -0.5, 5}, rot = {90, 0, 0}, img = g.image},
+		{kind = .Panel, pos = {1, -0.5, 0}, rot = {90, 0, 0}, img = g.image},
+		{kind = .Panel, pos = {1, -0.5, 1}, rot = {90, 0, 0}, img = g.image},
+		{kind = .Panel, pos = {1, -0.5, 2}, rot = {90, 0, 0}, img = g.image},
+		{kind = .Panel, pos = {1, -0.5, 3}, rot = {90, 0, 0}, img = g.image},
+		{kind = .Panel, pos = {1, -0.5, 4}, rot = {90, 0, 0}, img = g.image},
+		{kind = .Panel, pos = {1, -0.5, 5}, rot = {90, 0, 0}, img = g.image},
+		{kind = .Panel, pos = {2, -0.5, 0}, rot = {90, 0, 0}, img = g.image},
+		{kind = .Panel, pos = {2, -0.5, 1}, rot = {90, 0, 0}, img = g.image},
+		{kind = .Panel, pos = {2, -0.5, 2}, rot = {90, 0, 0}, img = g.image},
+		{kind = .Panel, pos = {2, -0.5, 3}, rot = {90, 0, 0}, img = g.image},
+		{kind = .Panel, pos = {2, -0.5, 4}, rot = {90, 0, 0}, img = g.image},
+		{kind = .Panel, pos = {2, -0.5, 5}, rot = {90, 0, 0}, img = g.image},
+		{kind = .Panel, pos = {3, -0.5, 0}, rot = {90, 0, 0}, img = g.image},
+		{kind = .Panel, pos = {3, -0.5, 1}, rot = {90, 0, 0}, img = g.image},
+		{kind = .Panel, pos = {3, -0.5, 2}, rot = {90, 0, 0}, img = g.image},
+		{kind = .Panel, pos = {3, -0.5, 3}, rot = {90, 0, 0}, img = g.image},
+		{kind = .Panel, pos = {3, -0.5, 4}, rot = {90, 0, 0}, img = g.image},
+		{kind = .Panel, pos = {3, -0.5, 5}, rot = {90, 0, 0}, img = g.image},
+		{kind = .Panel, pos = {4, -0.5, 0}, rot = {90, 0, 0}, img = g.image},
+		{kind = .Panel, pos = {4, -0.5, 1}, rot = {90, 0, 0}, img = g.image},
+		{kind = .Panel, pos = {4, -0.5, 2}, rot = {90, 0, 0}, img = g.image},
+		{kind = .Panel, pos = {4, -0.5, 3}, rot = {90, 0, 0}, img = g.image},
+		{kind = .Panel, pos = {4, -0.5, 4}, rot = {90, 0, 0}, img = g.image},
+		{kind = .Panel, pos = {4, -0.5, 5}, rot = {90, 0, 0}, img = g.image},
+		// walls
+		{kind = .Panel, pos = {0, 0, 0}, img = g.image},
+		{kind = .Panel, pos = {1, 0, 0}, img = g.image},
+		{kind = .Panel, pos = {2, 0, 0}, img = g.image},
+		{kind = .Panel, pos = {3, 0, 0}, img = g.image},
+		{kind = .Panel, pos = {0, 1, 0}, img = g.image},
+		{kind = .Panel, pos = {1, 1, 0}, img = g.image},
+		{kind = .Panel, pos = {2, 1, 0}, img = g.image},
+		{kind = .Panel, pos = {3, 1, 0}, img = g.image},
+		{kind = .Panel, pos = {-1, 0, 0.5}, rot = {0, 45, 0}, img = g.image2},
+		{kind = .Panel, pos = {-2, 0, 1}, rot = {0, 45, 0}, img = g.image2},
+		{kind = .Panel, pos = {-3, 0, 1.5}, rot = {0, 45, 0}, img = g.image2},
+		{kind = .Panel, pos = {-4, 0, 2}, rot = {0, 45, 0}, img = g.image2},
+		{kind = .Panel, pos = {-1, 1, 0.5}, rot = {0, 45, 0}, img = g.image2},
+		{kind = .Panel, pos = {-2, 1, 1}, rot = {0, 45, 0}, img = g.image2},
+		{kind = .Panel, pos = {-3, 1, 1.5}, rot = {0, 45, 0}, img = g.image2},
+		{kind = .Panel, pos = {-4, 1, 2}, rot = {0, 45, 0}, img = g.image2},
+		{kind = .Panel, pos = {0, 0, 5}, img = g.image},
+		{kind = .Panel, pos = {0, 1, 5}, img = g.image},
+		{kind = .Panel, pos = {0, 2, 5}, img = g.image},
+		{kind = .Panel, pos = {0, 3, 5}, img = g.image},
+		{kind = .Panel, pos = {0, 4, 5}, img = g.image},
+		{kind = .Panel, pos = {0, 5, 5}, img = g.image},
+		{kind = .Panel, pos = {0, 6, 5}, img = g.image},
+		{kind = .Panel, pos = {0, 7, 5}, img = g.image},
+		{kind = .Panel, pos = {0, 0, -5}, img = g.image},
+		{kind = .Panel, pos = {0, 1, -5}, img = g.image},
+		{kind = .Panel, pos = {0, 2, -5}, img = g.image},
+		{kind = .Panel, pos = {0, 3, -5}, img = g.image},
+		{kind = .Panel, pos = {0, 4, -5}, img = g.image},
+		{kind = .Panel, pos = {0, 5, -5}, img = g.image},
+		{kind = .Panel, pos = {0, 6, -5}, img = g.image},
+		{kind = .Panel, pos = {0, 7, -5}, img = g.image},
+		{kind = .Panel, pos = {5, 0, 0}, rot = {0, 90, 0}, img = g.image},
+		{kind = .Panel, pos = {5, 1, 0}, rot = {0, 90, 0}, img = g.image},
+		{kind = .Panel, pos = {5, 0, 0}, rot = {0, 90, 0}, img = g.image},
+		{kind = .Panel, pos = {5, 1, 0}, rot = {0, 90, 0}, img = g.image},
+		{kind = .Panel, pos = {5, 2, 0}, rot = {0, 90, 0}, img = g.image},
+		{kind = .Panel, pos = {5, 3, 0}, rot = {0, 90, 0}, img = g.image},
+		{kind = .Panel, pos = {5, 4, 0}, rot = {0, 90, 0}, img = g.image},
+		{kind = .Panel, pos = {5, 5, 0}, rot = {0, 90, 0}, img = g.image},
+		{kind = .Panel, pos = {5, 6, 0}, rot = {0, 90, 0}, img = g.image},
+		{kind = .Panel, pos = {5, 7, 0}, rot = {0, 90, 0}, img = g.image},
+		{kind = .Panel, pos = {-5, 0, 0}, rot = {0, 90, 0}, img = g.image},
+		{kind = .Panel, pos = {-5, 1, 0}, rot = {0, 90, 0}, img = g.image},
+		{kind = .Panel, pos = {-5, 2, 0}, rot = {0, 90, 0}, img = g.image},
+		{kind = .Panel, pos = {-5, 3, 0}, rot = {0, 90, 0}, img = g.image},
+		{kind = .Panel, pos = {-5, 4, 0}, rot = {0, 90, 0}, img = g.image},
+		{kind = .Panel, pos = {-5, 5, 0}, rot = {0, 90, 0}, img = g.image},
+		{kind = .Panel, pos = {-5, 6, 0}, rot = {0, 90, 0}, img = g.image},
+		{kind = .Panel, pos = {-5, 7, 0}, rot = {0, 90, 0}, img = g.image},
+		make_box(pos = {15, 15, 15}),
 	}
 
-	g.sampler = sg.make_sampler({})
-	g.bind.samplers = {
-		SMP_smp = g.sampler,
-	}
-
-	// create a shader and pipeline object (default render states are fine for triangle)
-	g.pip = sg.make_pipeline(
-	{
-		shader = sg.make_shader(triangle_shader_desc(sg.query_backend())),
-		index_type = .UINT16,
-		depth = {
-			write_enabled = true, // always write to depth buffer
-			compare       = .LESS_EQUAL, // don't render objects behind objects in view
-		},
-		layout = {
-			attrs = {
-				ATTR_triangle_position = {format = .FLOAT3},
-				ATTR_triangle_color0 = {format = .FLOAT4},
-				ATTR_triangle_uv = {format = .FLOAT2},
-			},
-		},
-	},
-	)
-
-	// a pass action to clear framebuffer to black
-	g.pass_action = {
-		colors = {0 = {load_action = .CLEAR, clear_value = {r = 0.4, g = 0.2, b = 0.7, a = 1}}},
+	for obj in objs {
+		entities[get_new_entity_idx()] = obj
 	}
 }
 
@@ -501,143 +676,90 @@ frame :: proc "c" () {
 	// rotate it to make the image right-side up
 	v := linalg.matrix4_look_at_f32(g.camera.pos, g.camera.target, {0, 1, 0})
 
-	objects := []Object {
-		// floor
-		{pos = {0, -0.5, 0}, rot = {90, 0, 0}, img = g.image},
-		{pos = {0, -0.5, 1}, rot = {90, 0, 0}, img = g.image},
-		{pos = {0, -0.5, 2}, rot = {90, 0, 0}, img = g.image},
-		{pos = {0, -0.5, 3}, rot = {90, 0, 0}, img = g.image},
-		{pos = {0, -0.5, 4}, rot = {90, 0, 0}, img = g.image},
-		{pos = {0, -0.5, 5}, rot = {90, 0, 0}, img = g.image},
-		{pos = {1, -0.5, 0}, rot = {90, 0, 0}, img = g.image},
-		{pos = {1, -0.5, 1}, rot = {90, 0, 0}, img = g.image},
-		{pos = {1, -0.5, 2}, rot = {90, 0, 0}, img = g.image},
-		{pos = {1, -0.5, 3}, rot = {90, 0, 0}, img = g.image},
-		{pos = {1, -0.5, 4}, rot = {90, 0, 0}, img = g.image},
-		{pos = {1, -0.5, 5}, rot = {90, 0, 0}, img = g.image},
-		{pos = {2, -0.5, 0}, rot = {90, 0, 0}, img = g.image},
-		{pos = {2, -0.5, 1}, rot = {90, 0, 0}, img = g.image},
-		{pos = {2, -0.5, 2}, rot = {90, 0, 0}, img = g.image},
-		{pos = {2, -0.5, 3}, rot = {90, 0, 0}, img = g.image},
-		{pos = {2, -0.5, 4}, rot = {90, 0, 0}, img = g.image},
-		{pos = {2, -0.5, 5}, rot = {90, 0, 0}, img = g.image},
-		{pos = {3, -0.5, 0}, rot = {90, 0, 0}, img = g.image},
-		{pos = {3, -0.5, 1}, rot = {90, 0, 0}, img = g.image},
-		{pos = {3, -0.5, 2}, rot = {90, 0, 0}, img = g.image},
-		{pos = {3, -0.5, 3}, rot = {90, 0, 0}, img = g.image},
-		{pos = {3, -0.5, 4}, rot = {90, 0, 0}, img = g.image},
-		{pos = {3, -0.5, 5}, rot = {90, 0, 0}, img = g.image},
-		{pos = {4, -0.5, 0}, rot = {90, 0, 0}, img = g.image},
-		{pos = {4, -0.5, 1}, rot = {90, 0, 0}, img = g.image},
-		{pos = {4, -0.5, 2}, rot = {90, 0, 0}, img = g.image},
-		{pos = {4, -0.5, 3}, rot = {90, 0, 0}, img = g.image},
-		{pos = {4, -0.5, 4}, rot = {90, 0, 0}, img = g.image},
-		{pos = {4, -0.5, 5}, rot = {90, 0, 0}, img = g.image},
-		// walls
-		{pos = {0, 0, 0}, img = g.image},
-		{pos = {1, 0, 0}, img = g.image},
-		{pos = {2, 0, 0}, img = g.image},
-		{pos = {3, 0, 0}, img = g.image},
-		{pos = {0, 1, 0}, img = g.image},
-		{pos = {1, 1, 0}, img = g.image},
-		{pos = {2, 1, 0}, img = g.image},
-		{pos = {3, 1, 0}, img = g.image},
-		{pos = {-1, 0, 0.5}, rot = {0, 45, 0}, img = g.image2},
-		{pos = {-2, 0, 1}, rot = {0, 45, 0}, img = g.image2},
-		{pos = {-3, 0, 1.5}, rot = {0, 45, 0}, img = g.image2},
-		{pos = {-4, 0, 2}, rot = {0, 45, 0}, img = g.image2},
-		{pos = {-1, 1, 0.5}, rot = {0, 45, 0}, img = g.image2},
-		{pos = {-2, 1, 1}, rot = {0, 45, 0}, img = g.image2},
-		{pos = {-3, 1, 1.5}, rot = {0, 45, 0}, img = g.image2},
-		{pos = {-4, 1, 2}, rot = {0, 45, 0}, img = g.image2},
-		{pos = {0, 0, 5}, img = g.image},
-		{pos = {0, 1, 5}, img = g.image},
-		{pos = {0, 2, 5}, img = g.image},
-		{pos = {0, 3, 5}, img = g.image},
-		{pos = {0, 4, 5}, img = g.image},
-		{pos = {0, 5, 5}, img = g.image},
-		{pos = {0, 6, 5}, img = g.image},
-		{pos = {0, 7, 5}, img = g.image},
-		{pos = {0, 0, -5}, img = g.image},
-		{pos = {0, 1, -5}, img = g.image},
-		{pos = {0, 2, -5}, img = g.image},
-		{pos = {0, 3, -5}, img = g.image},
-		{pos = {0, 4, -5}, img = g.image},
-		{pos = {0, 5, -5}, img = g.image},
-		{pos = {0, 6, -5}, img = g.image},
-		{pos = {0, 7, -5}, img = g.image},
-		{pos = {5, 0, 0}, rot = {0, 90, 0}, img = g.image},
-		{pos = {5, 1, 0}, rot = {0, 90, 0}, img = g.image},
-		{pos = {5, 0, 0}, rot = {0, 90, 0}, img = g.image},
-		{pos = {5, 1, 0}, rot = {0, 90, 0}, img = g.image},
-		{pos = {5, 2, 0}, rot = {0, 90, 0}, img = g.image},
-		{pos = {5, 3, 0}, rot = {0, 90, 0}, img = g.image},
-		{pos = {5, 4, 0}, rot = {0, 90, 0}, img = g.image},
-		{pos = {5, 5, 0}, rot = {0, 90, 0}, img = g.image},
-		{pos = {5, 6, 0}, rot = {0, 90, 0}, img = g.image},
-		{pos = {5, 7, 0}, rot = {0, 90, 0}, img = g.image},
-		{pos = {-5, 0, 0}, rot = {0, 90, 0}, img = g.image},
-		{pos = {-5, 1, 0}, rot = {0, 90, 0}, img = g.image},
-		{pos = {-5, 2, 0}, rot = {0, 90, 0}, img = g.image},
-		{pos = {-5, 3, 0}, rot = {0, 90, 0}, img = g.image},
-		{pos = {-5, 4, 0}, rot = {0, 90, 0}, img = g.image},
-		{pos = {-5, 5, 0}, rot = {0, 90, 0}, img = g.image},
-		{pos = {-5, 6, 0}, rot = {0, 90, 0}, img = g.image},
-		{pos = {-5, 7, 0}, rot = {0, 90, 0}, img = g.image},
+	for obj in entities {
+		switch obj.kind {
+		case .None:
+		case .Panel:
+			sg.begin_pass({action = bind_panel.pass_action, swapchain = sglue.swapchain()})
+			sg.apply_pipeline(bind_panel.pipeline)
+			binding := bind_panel.bind
+
+			m :=
+				linalg.matrix4_translate_f32(obj.pos) *
+				linalg.matrix4_from_yaw_pitch_roll_f32(
+					linalg.to_radians(obj.rot.y),
+					linalg.to_radians(obj.rot.x),
+					linalg.to_radians(obj.rot.z),
+				) *
+				linalg.matrix4_rotate_f32(linalg.to_radians(f32(180)), {1, 0, 0})
+
+			// multiplication order matters
+			vs_params := Vs_Params {
+				mvp = p * v * m,
+			}
+
+			binding.images = {
+				IMG_tex = obj.img,
+			}
+
+			sg.apply_bindings(binding) // move vertices / images etc.. to be bound here? I assume that would be better if they change frame to frame?
+			sg.apply_uniforms(UB_Vs_Params, sg_range(&vs_params))
+			sg.draw(0, 6, 1)
+
+			sg.end_pass()
+		case .Bullet:
+			sg.begin_pass({action = bind_bullet.pass_action, swapchain = sglue.swapchain()})
+			sg.apply_pipeline(bind_bullet.pipeline)
+			binding := bind_bullet.bind
+			m :=
+				linalg.matrix4_translate_f32(obj.pos) *
+				linalg.matrix4_from_yaw_pitch_roll_f32(
+					linalg.to_radians(obj.rot.x),
+					linalg.to_radians(obj.rot.y),
+					linalg.to_radians(obj.rot.z),
+				) *
+				linalg.matrix4_rotate_f32(linalg.to_radians(f32(180)), {1, 0, 0})
+			// multiplication order matters
+			vs_params := Vs_Params {
+				mvp = p * v * m,
+			}
+
+			binding.images = {
+				IMG_tex = obj.img,
+			}
+
+			sg.apply_bindings(binding) // move vertices / images etc.. to be bound here? I assume that would be better if they change frame to frame?
+			sg.apply_uniforms(UB_Vs_Params, sg_range(&vs_params))
+			sg.draw(0, 6, 1)
+
+			sg.end_pass()
+		case .Box:
+			sg.begin_pass({action = bind_box.pass_action, swapchain = sglue.swapchain()})
+			sg.apply_pipeline(bind_box.pipeline)
+			binding := bind_box.bind
+
+			for vertice in obj.geometry {
+				m := linalg.matrix4_translate_f32(vertice)
+
+				// multiplication order matters
+				vs_params := Vs_Params {
+					mvp = p * v * m,
+				}
+
+				binding.images = {
+					IMG_tex = obj.img,
+				}
+
+				sg.apply_bindings(binding) // move vertices / images etc.. to be bound here? I assume that would be better if they change frame to frame?
+				sg.apply_uniforms(UB_Vs_Params, sg_range(&vs_params))
+				sg.draw(0, 6, 1)
+
+			}
+
+			sg.end_pass()
+		}
 	}
 
-	sg.begin_pass({action = g.pass_action, swapchain = sglue.swapchain()})
-
-	sg.apply_pipeline(g.pip)
-
-	binding := g.bind
-
-	for obj in objects {
-		m :=
-			linalg.matrix4_translate_f32(obj.pos) *
-			linalg.matrix4_from_yaw_pitch_roll_f32(
-				linalg.to_radians(obj.rot.y),
-				linalg.to_radians(obj.rot.x),
-				linalg.to_radians(obj.rot.z),
-			) *
-			linalg.matrix4_rotate_f32(linalg.to_radians(f32(180)), {1, 0, 0})
-		// multiplication order matters
-		vs_params := Vs_Params {
-			mvp = p * v * m,
-		}
-
-		binding.images = {
-			IMG_tex = obj.img,
-		}
-
-		sg.apply_bindings(binding) // move vertices / images etc.. to be bound here? I assume that would be better if they change frame to frame?
-		sg.apply_uniforms(UB_Vs_Params, sg_range(&vs_params))
-		sg.draw(0, 6, 1)
-	}
-
-	for bullet in bullets {
-		m :=
-			linalg.matrix4_translate_f32(bullet.pos) *
-			linalg.matrix4_from_yaw_pitch_roll_f32(
-				linalg.to_radians(bullet.rot.x),
-				linalg.to_radians(bullet.rot.y),
-				linalg.to_radians(bullet.rot.z),
-			) *
-			linalg.matrix4_rotate_f32(linalg.to_radians(f32(180)), {1, 0, 0})
-		// multiplication order matters
-		vs_params := Vs_Params {
-			mvp = p * v * m,
-		}
-
-		binding.images = {
-			IMG_tex = bullet.img,
-		}
-
-		sg.apply_bindings(binding) // move vertices / images etc.. to be bound here? I assume that would be better if they change frame to frame?
-		sg.apply_uniforms(UB_Vs_Params, sg_range(&vs_params))
-		sg.draw(0, 6, 1)
-	}
-	sg.end_pass()
 	sg.commit()
 
 	mouse_move = {}
@@ -715,31 +837,51 @@ update_camera :: proc(dt: f32) {
 
 	if key_down[.C] {
 		// TODO: not working
-		g.camera.look = {722, 300}
-		g.camera.pos = {0, 0, 2}
-		g.camera.target = {0, 0, 2}
+		//	g.camera.look = {722, 300}
+		g.camera.look = {0, 0}
+		g.camera.pos = {20, 20, 20}
+		g.camera.target = {0, 0, 0}
 	} else {
 		g.camera.pos += motion
 		g.camera.target = g.camera.pos + forward
 	}
 }
 
+Kind :: enum {
+	None,
+	Panel,
+	Box,
+	Bullet,
+}
+
 Object :: struct {
-	pos:    Vec3,
-	rot:    Vec3,
-	target: Vec3,
-	look:   Vec2,
-	img:    sg.Image,
+	kind:     Kind,
+	pos:      Vec3,
+	velocity: Vec3,
+	rot:      Vec3,
+	target:   Vec3,
+	look:     Vec2,
+	geometry: []Vec3,
+	img:      sg.Image,
 }
 
-Bullet :: struct {
-	dir: Vec3,
-	pos: Vec3,
-	rot: Vec3,
-	img: sg.Image,
+ENTITY_MAX :: 1000
+
+entities: [ENTITY_MAX]Object
+entities_idx := -1
+get_new_entity_idx :: proc() -> int {
+	log.assertf(
+		entities_idx < len(entities) - 1,
+		"%s adding entity %d, capacity %d",
+		FAIL,
+		entities_idx + 2,
+		len(entities),
+	)
+
+	entities_idx += 1
+	return entities_idx
 }
 
-bullets: [dynamic]Bullet
 
 update_audio :: proc(dt: f32) {
 
@@ -775,20 +917,23 @@ update_bullets :: proc(dt: f32) {
 
 	if mouse_down {
 		mouse_down = false
-		append(
-			&bullets,
-			Bullet {
-				dir = g.camera.target - g.camera.pos,
-				pos = g.camera.target,
-				rot = Vec3{0.0, 0.0, 0.0},
-				img = g.image,
-			},
-		)
+
+		index := get_new_entity_idx()
+		entities[index] = Object {
+			kind     = .Bullet,
+			velocity = g.camera.target - g.camera.pos,
+			pos      = g.camera.target,
+			rot      = Vec3{0.0, 0.0, 0.0},
+			img      = g.image,
+		}
 	}
 
-	for &bullet in bullets {
+	for &bullet in entities {
+		if bullet.kind != .Bullet do continue
+
+		// TODO: move this to the frame render loop?
 		bullet.rot += Vec3{0, 3, 3}
-		bullet.pos += bullet.dir * SHOOT_SPEED
+		bullet.pos += bullet.velocity * SHOOT_SPEED
 	}
 
 }
@@ -907,4 +1052,34 @@ main :: proc() {
 			logger = {func = slog.func},
 		},
 	)
+}
+
+make_box :: proc(pos: Vec3 = {0, 0, 0}, rot: Vec3 = {0, 0, 0}, scale: Vec3 = {1, 1, 1}) -> Object {
+	// odinfmt: disable
+	box := []Vec3{
+		{-0.5, -0.5, -0.5},
+		{-0.5, -0.5,  0.0},
+		{-0.5,  0.5, -0.5},
+		{-0.5,  0.5,  0.5},
+		{ 0.5, -0.5, -0.5},
+		{ 0.5, -0.5,  0.5},
+		{ 0.5,  0.5, -0.5},
+		{ 0.5,  0.5,  0.5},
+	}
+	// odinfmt: enable
+
+	for &v in box {
+		v += pos
+		// TODO: rotation
+	}
+
+	return Object {
+		kind = .Box,
+		pos = pos,
+		rot = rot,
+		target = {0, 0, 0},
+		look = {0, 0},
+		geometry = box,
+		img = g.image,
+	}
 }
